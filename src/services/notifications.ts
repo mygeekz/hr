@@ -1,6 +1,7 @@
 // Notification service for managing in-app notifications and SMS
 import { smsService } from './sms';
-import db from '../lib/db';
+
+const API_URL = 'http://localhost:3001';
 
 interface Notification {
   id: number;
@@ -26,22 +27,14 @@ class NotificationService {
    * Create a new notification
    */
   async createNotification(payload: NotificationPayload): Promise<Notification> {
-    const { userId, title, body, type } = payload;
-    const createdAt = new Date().toISOString();
-    const stmt = db.prepare(
-      'INSERT INTO notifications (userId, title, body, isRead, createdAt, type) VALUES (?, ?, ?, ?, ?, ?)'
-    );
-    const result = stmt.run(userId, title, body, 0, createdAt, type);
-
-    const newNotification: Notification = {
-      id: result.lastInsertRowid as number,
-      userId,
-      title,
-      body,
-      isRead: false,
-      createdAt,
-      type,
-    };
+    const response = await fetch(`${API_URL}/notifications`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const newNotification = await response.json();
 
     // Notify subscribers (for real-time updates)
     this.subscribers.forEach(callback => callback(newNotification));
@@ -120,18 +113,19 @@ class NotificationService {
   /**
    * Get notifications for a user
    */
-  getNotifications(userId: string): Notification[] {
-    const stmt = db.prepare('SELECT * FROM notifications WHERE userId = ? ORDER BY createdAt DESC');
-    const notifications = stmt.all(userId);
-    return notifications.map(n => ({ ...n, isRead: n.isRead === 1 })) as Notification[];
+  async getNotifications(userId: string): Promise<Notification[]> {
+    const response = await fetch(`${API_URL}/notifications?userId=${userId}`);
+    const notifications = await response.json();
+    return notifications;
   }
 
   /**
    * Mark notification as read
    */
-  markAsRead(notificationId: number): void {
-    const stmt = db.prepare('UPDATE notifications SET isRead = 1 WHERE id = ?');
-    stmt.run(notificationId);
+  async markAsRead(notificationId: number): Promise<void> {
+    await fetch(`${API_URL}/notifications/${notificationId}/read`, {
+      method: 'PUT',
+    });
   }
 }
 

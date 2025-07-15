@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { notificationService } from '@/services/notifications';
 
 interface Notification {
-  id: string;
+  id: number;
   userId: string;
   title: string;
   body: string;
   isRead: boolean;
-  createdAt: Date;
+  createdAt: string;
   type: 'request' | 'approval' | 'system';
 }
 
@@ -16,10 +16,13 @@ export const useNotifications = (userId: string) => {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    // Load initial notifications
-    const initialNotifications = notificationService.getNotifications(userId);
-    setNotifications(initialNotifications);
-    setUnreadCount(initialNotifications.filter(n => !n.isRead).length);
+    const fetchNotifications = async () => {
+      const initialNotifications = await notificationService.getNotifications(userId);
+      setNotifications(initialNotifications);
+      setUnreadCount(initialNotifications.filter(n => !n.isRead).length);
+    };
+
+    fetchNotifications();
 
     // Subscribe to new notifications
     const unsubscribe = notificationService.subscribe((notification) => {
@@ -34,8 +37,8 @@ export const useNotifications = (userId: string) => {
     return unsubscribe;
   }, [userId]);
 
-  const markAsRead = (notificationId: string) => {
-    notificationService.markAsRead(notificationId);
+  const markAsRead = async (notificationId: number) => {
+    await notificationService.markAsRead(notificationId);
     setNotifications(prev => 
       prev.map(n => 
         n.id === notificationId ? { ...n, isRead: true } : n
@@ -44,12 +47,12 @@ export const useNotifications = (userId: string) => {
     setUnreadCount(prev => prev - 1);
   };
 
-  const markAllAsRead = () => {
-    notifications.forEach(n => {
-      if (!n.isRead) {
-        notificationService.markAsRead(n.id);
-      }
-    });
+  const markAllAsRead = async () => {
+    await Promise.all(
+      notifications
+        .filter(n => !n.isRead)
+        .map(n => notificationService.markAsRead(n.id))
+    );
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     setUnreadCount(0);
   };
