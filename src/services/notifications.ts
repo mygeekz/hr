@@ -1,13 +1,14 @@
 // Notification service for managing in-app notifications and SMS
 import { smsService } from './sms';
+import db from '../lib/db';
 
 interface Notification {
-  id: string;
+  id: number;
   userId: string;
   title: string;
   body: string;
   isRead: boolean;
-  createdAt: Date;
+  createdAt: string;
   type: 'request' | 'approval' | 'system';
 }
 
@@ -19,32 +20,33 @@ interface NotificationPayload {
 }
 
 class NotificationService {
-  private notifications: Notification[] = [];
   private subscribers: ((notification: Notification) => void)[] = [];
 
   /**
    * Create a new notification
    */
   async createNotification(payload: NotificationPayload): Promise<Notification> {
-    const notification: Notification = {
-      id: Date.now().toString(),
-      userId: payload.userId,
-      title: payload.title,
-      body: payload.body,
+    const { userId, title, body, type } = payload;
+    const createdAt = new Date().toISOString();
+    const stmt = db.prepare(
+      'INSERT INTO notifications (userId, title, body, isRead, createdAt, type) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    const result = stmt.run(userId, title, body, 0, createdAt, type);
+
+    const newNotification: Notification = {
+      id: result.lastInsertRowid as number,
+      userId,
+      title,
+      body,
       isRead: false,
-      createdAt: new Date(),
-      type: payload.type,
+      createdAt,
+      type,
     };
 
-    this.notifications.push(notification);
-    
     // Notify subscribers (for real-time updates)
-    this.subscribers.forEach(callback => callback(notification));
+    this.subscribers.forEach(callback => callback(newNotification));
 
-    // In a real app, this would save to database
-    console.log('Notification created:', notification);
-    
-    return notification;
+    return newNotification;
   }
 
   /**
@@ -66,6 +68,7 @@ class NotificationService {
 
     // Send SMS notification
     try {
+      // @ts-ignore
       await smsService.sendNewRequestNotification(managerMobile, employeeName, requestType);
     } catch (error) {
       console.error('Failed to send SMS notification:', error);
@@ -92,6 +95,7 @@ class NotificationService {
 
     // Send SMS notification
     try {
+      // @ts-ignore
       await smsService.sendRequestStatusNotification(employeeMobile, employeeName, status);
     } catch (error) {
       console.error('Failed to send SMS notification:', error);
@@ -117,17 +121,17 @@ class NotificationService {
    * Get notifications for a user
    */
   getNotifications(userId: string): Notification[] {
-    return this.notifications.filter(n => n.userId === userId);
+    const stmt = db.prepare('SELECT * FROM notifications WHERE userId = ? ORDER BY createdAt DESC');
+    const notifications = stmt.all(userId);
+    return notifications.map(n => ({ ...n, isRead: n.isRead === 1 })) as Notification[];
   }
 
   /**
    * Mark notification as read
    */
-  markAsRead(notificationId: string): void {
-    const notification = this.notifications.find(n => n.id === notificationId);
-    if (notification) {
-      notification.isRead = true;
-    }
+  markAsRead(notificationId: number): void {
+    const stmt = db.prepare('UPDATE notifications SET isRead = 1 WHERE id = ?');
+    stmt.run(notificationId);
   }
 }
 

@@ -39,4 +39,5 @@ class SMSService {
   }
 }
 
-export default SMSService;
+const smsService = new SMSService();
+export { smsService };
