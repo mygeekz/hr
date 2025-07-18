@@ -3,13 +3,11 @@
 /* ------------------------------------------------------------------ */
 const express = require("express");
 const cors = require("cors");
-const db = require("./db"); // فایل اتصال به دیتابیس شما
+const db = require("./db");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const crypto = require('crypto');
-const bcrypt = require('bcryptjs'); //  <-- برای هش کردن و مقایسه رمز عبور
-const jwt = require('jsonwebtoken'); // <-- برای ساخت توکن امن
 
 /* ------------------------------------------------------------------ */
 /* تنظیمات عمومی                                                       */
@@ -18,11 +16,8 @@ const app = express();
 app.use(cors({ origin: "*", methods: ["GET", "POST", "PUT", "DELETE"] }));
 app.use(express.json());
 
-// کلید امن برای ساخت توکن - بهتر است این مقدار در فایل .env نگهداری شود
-const JWT_SECRET_KEY = 'your_super_secret_and_long_key_for_jwt';
-
 /* ------------------------------------------------------------------ */
-/* بارگذاری فایل‌ها (عکس و ضمائم)                                       */
+/* بارگذاری فایل‌ها (عکس و ضمائم)                                     */
 /* ------------------------------------------------------------------ */
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
@@ -38,166 +33,33 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 app.use("/uploads", express.static(uploadDir));
 
+
 /* ================================================================== */
-/* ROUTES API                                                         */
+/* API ROUTES                                                         */
 /* ================================================================== */
 
-/* --------------------------------- Auth API (اصلاح‌شده و امن) --------------------------------- */
+/* --------------------------------- Auth API --------------------------------- */
 app.post("/api/auth/login", (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) {
-        return res.status(400).json({ message: "نام کاربری و رمز عبور الزامی است." });
+        return res.status(400).json({ error: "نام کاربری و رمز عبور الزامی است." });
     }
-
-    const sql = `SELECT * FROM users WHERE username = ?`;
-    db.get(sql, [username], (err, user) => {
+    const sql = `SELECT * FROM users WHERE username = ? AND password = ?`;
+    db.get(sql, [username, password], (err, user) => {
         if (err) {
-            console.error("Login DB Error:", err);
-            return res.status(500).json({ message: "خطای داخلی سرور" });
+            return res.status(500).json({ error: "خطای داخلی سرور" });
         }
         if (!user) {
-            return res.status(401).json({ message: "نام کاربری یا رمز عبور اشتباه است." });
+            return res.status(401).json({ error: "نام کاربری یا رمز عبور اشتباه است." });
         }
         if (!user.isActive) {
-            return res.status(403).json({ message: "حساب کاربری شما غیرفعال است." });
+            return res.status(403).json({ error: "حساب کاربری شما غیرفعال است." });
         }
-
-        // ★★★ این بخش کلیدی است ★★★
-        // مقایسه رمز عبور ورودی با رمز هش‌شده در دیتابیس با تابع صحیح
-        const isPasswordCorrect = bcrypt.compareSync(password, user.password);
-        if (!isPasswordCorrect) {
-            return res.status(401).json({ message: "نام کاربری یا رمز عبور اشتباه است." });
-        }
-
-        // ساخت توکن امن JWT در صورت موفقیت
-        const JWT_SECRET_KEY = 'your_super_secret_key'; // این کلید را بعدا در فایل .env قرار دهید
-        const payload = { id: user.id, username: user.username, role: user.role };
-        const token = jwt.sign(payload, JWT_SECRET_KEY, { expiresIn: '8h' });
-
-        const { password: userPassword, ...userData } = user; // حذف رمز از پاسخ
-
-        res.json({
-            message: "ورود موفقیت آمیز بود",
-            token: token,
-            user: userData
-        });
+        
+        const { password, ...userData } = user;
+        res.json({ message: "ورود موفقیت آمیز بود", user: userData });
     });
 });
-/* --------------------------------- Dashboard API --------------------------------- */
-app.get("/api/dashboard/stats", (req, res) => {
-  const queries = [
-    db.get.bind(db, "SELECT COUNT(*) as count FROM employees"),
-    db.get.bind(db, "SELECT COUNT(*) as count FROM tasks WHERE status = 'تکمیل شده'"),
-    db.get.bind(db, "SELECT COUNT(*) as count FROM tasks WHERE status != 'تکمیل شده'"),
-    db.all.bind(db, "SELECT * FROM notifications ORDER BY createdAt DESC LIMIT 5")
-  ];
-
-  Promise.all(queries.map(fn => new Promise((resolve, reject) => {
-    fn((err, result) => {
-      if (err) reject(err);
-      else resolve(result);
-    });
-  })))
-  .then(([employees, completedTasks, pendingTasks, recentActivities]) => {
-    res.json({
-      totalEmployees: employees.count,
-      totalCompletedTasks: completedTasks.count,
-      totalPendingTasks: pendingTasks.count,
-      recentActivities: recentActivities
-    });
-  })
-  .catch(err => {
-    console.error("Error fetching dashboard stats:", err);
-    res.status(500).json({ error: "Failed to fetch dashboard statistics" });
-  });
-});
-
-
-/* --------------------------------- Users API (اصلاح‌شده و امن) --------------------------------- */
-app.get("/api/users", (_, res) => {
-  db.all(`SELECT id, fullName, username, role, isActive, createdAt FROM users ORDER BY createdAt DESC`, [], (e, rows) =>
-    e ? res.status(500).json({ error: e.message }) : res.json(rows)
-  );
-});
-
-app.post("/api/users", (req, res) => {
-    const { fullName, username, password, role } = req.body;
-
-    if (!fullName || !username || !password || !role) {
-        return res.status(400).json({ error: "تمام فیلدها الزامی هستند." });
-    }
-
-    // ★ هش کردن رمز عبور قبل از ذخیره
-    const salt = bcrypt.genSaltSync(10);
-    const hashedPassword = bcrypt.hashSync(password, salt);
-
-    const id = `USER-${Date.now()}`;
-    const createdAt = new Date().toISOString();
-    const sql = `INSERT INTO users (id, fullName, username, password, role, isActive, createdAt) VALUES (?,?,?,?,?,?,?)`;
-
-    db.run(sql, [id, fullName, username, hashedPassword, role, 1, createdAt], function (e) {
-        if (e) {
-            if (e.message.includes('UNIQUE constraint failed')) {
-                return res.status(409).json({ error: "این نام کاربری قبلا استفاده شده است." });
-            }
-            return res.status(500).json({ error: e.message });
-        }
-        res.status(201).json({ message: "کاربر با موفقیت ایجاد شد", userId: id });
-    });
-});
-
-app.put("/api/users/:id", (req, res) => {
-    const { fullName, username, role, password } = req.body;
-    let sql;
-    let params;
-
-    if (password && password.trim() !== '') {
-        // ★ اگر رمز عبور جدیدی ارسال شده، آن را هش می‌کنیم
-        const salt = bcrypt.genSaltSync(10);
-        const hashedPassword = bcrypt.hashSync(password, salt);
-        sql = `UPDATE users SET fullName = ?, username = ?, role = ?, password = ? WHERE id = ?`;
-        params = [fullName, username, role, hashedPassword, req.params.id];
-    } else {
-        // اگر رمز عبوری ارسال نشده، آن را آپدیت نمی‌کنیم
-        sql = `UPDATE users SET fullName = ?, username = ?, role = ? WHERE id = ?`;
-        params = [fullName, username, role, req.params.id];
-    }
-
-    db.run(sql, params, function (err) {
-        if (err) {
-             if (err.message.includes('UNIQUE constraint failed')) {
-                return res.status(409).json({ error: "این نام کاربری قبلا استفاده شده است." });
-            }
-            return res.status(500).json({ "error": err.message });
-        }
-        if (this.changes === 0) {
-            return res.status(404).json({ error: "کاربری با این شناسه یافت نشد." });
-        }
-        res.json({ message: "اطلاعات کاربر با موفقیت بروزرسانی شد", changes: this.changes });
-    });
-});
-
-app.patch("/api/users/:id/status", (req, res) => {
-    const { isActive } = req.body;
-    db.run(`UPDATE users SET isActive = ? WHERE id = ?`, [isActive, req.params.id], function(err) {
-        if (err) return res.status(400).json({ "error": err.message });
-        res.json({ message: "وضعیت کاربر با موفقیت بروزرسانی شد", changes: this.changes });
-    });
-});
-
-app.delete("/api/users/:id", (req, res) => {
-    db.run(`DELETE FROM users WHERE id = ?`, req.params.id, function (err) {
-        if (err) return res.status(400).json({ "error": err.message });
-        res.json({ message: "کاربر با موفقیت حذف شد", changes: this.changes });
-    });
-});
-
-
-// ------------------------------------------------------------------
-// سایر API های شما (Employees, Documents, etc.) بدون تغییر در اینجا قرار می‌گیرند
-// ...
-// (کدهای مربوط به کارمندان، مدارک، وظایف و غیره را در اینجا قرار دهید)
-// ------------------------------------------------------------------
 
 /* --------------------------------- Employees API --------------------------------- */
 app.get("/api/employees", (_, res) => {
@@ -221,7 +83,8 @@ app.get("/api/employees/:id", (req, res) => {
 
 app.post("/api/employees", upload.fields([{ name: "photo", maxCount: 1 }, { name: "documents" }]), (req, res) => {
   try {
-	const { fullName, nationalId, employeeId, jobTitle, department, branch, contactNumber, email, dateJoined, dateOfBirth, monthlySalary, status, gender, militaryStatus, additionalNotes } = req.body || {};    const photoPath = req.files?.photo?.[0] ? `uploads/${req.files.photo[0].filename}` : null;
+    const { fullName, nationalId, employeeId, jobTitle, department, branch, contactNumber, email, dateJoined, dateOfBirth, monthlySalary, status, gender, militaryStatus, additionalNotes } = req.body;
+    const photoPath = req.files?.photo?.[0] ? `uploads/${req.files.photo[0].filename}` : null;
     const sql = `INSERT INTO employees (id, fullName, nationalId, jobTitle, department, branch, contactNumber, email, dateJoined, dateOfBirth, monthlySalary, status, gender, militaryStatus, additionalNotes, photo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
     const params = [employeeId, fullName, nationalId, jobTitle, department, branch, contactNumber, email, dateJoined, dateOfBirth, monthlySalary, status, gender, militaryStatus, additionalNotes, photoPath];
     
@@ -434,9 +297,59 @@ app.delete("/api/departments/:id", (req, res) => {
   db.run(`DELETE FROM departments WHERE id=?`, req.params.id, function(e) { e ? res.status(500).json({error:e.message}) : res.json({message:"Department deleted",changes:this.changes})});
 });
 
+/* --------------------------------- Users API --------------------------------- */
+app.get("/api/users", (_, res) => {
+  db.all(`SELECT id, fullName, username, role, isActive, createdAt FROM users ORDER BY createdAt DESC`, [], (e, rows) =>
+    e ? res.status(500).json({ error: e.message }) : res.json(rows)
+  );
+});
+
+app.post("/api/users", (req, res) => {
+    const { fullName, username, password, role } = req.body;
+    const id = `USER-${Date.now()}`;
+    const createdAt = new Date().toISOString();
+    const sql = `INSERT INTO users (id, fullName, username, password, role, isActive, createdAt) VALUES (?,?,?,?,?,?,?)`;
+    db.run(sql, [id, fullName, username, password, role, 1, createdAt], function (e) {
+        if (e) return res.status(400).json({ error: "نام کاربری تکراری است." });
+        res.status(201).json({ message: "User created", id: this.lastID });
+    });
+});
+
+app.put("/api/users/:id", (req, res) => {
+    const { fullName, username, role, password } = req.body;
+    let sql = `UPDATE users SET fullName = ?, username = ?, role = ?`;
+    let params = [fullName, username, role];
+
+    if (password) {
+        sql += `, password = ?`;
+        params.push(password);
+    }
+    sql += ` WHERE id = ?`;
+    params.push(req.params.id);
+
+    db.run(sql, params, function (err) {
+        if (err) return res.status(400).json({ "error": err.message });
+        res.json({ message: "User updated", changes: this.changes });
+    });
+});
+
+app.patch("/api/users/:id/status", (req, res) => {
+    const { isActive } = req.body;
+    db.run(`UPDATE users SET isActive = ? WHERE id = ?`, [isActive, req.params.id], function(err) {
+        if (err) return res.status(400).json({ "error": err.message });
+        res.json({ message: "Status updated", changes: this.changes });
+    });
+});
+
+app.delete("/api/users/:id", (req, res) => {
+  db.run(`DELETE FROM users WHERE id = ?`, req.params.id, function (err) {
+    if (err) return res.status(400).json({ "error": err.message });
+    res.json({ message: "deleted", changes: this.changes });
+  });
+});
 
 /* ------------------------------------------------------------------ */
-/* راه‌اندازی سرور                                                      */
+/* راه‌اندازی سرور                                                     */
 /* ------------------------------------------------------------------ */
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = process.env.PORT || 3001;

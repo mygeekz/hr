@@ -1,91 +1,100 @@
-// src/pages/Dashboard.tsx
-
 import { KpiCard } from '@/components/ui/dashboard/KpiCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/lib/auth';
 import { 
   Users, 
   CheckCircle, 
   Clock, 
+  TrendingUp,
   Activity,
-  Calendar,
-  AlertCircle
+  Calendar
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatDistanceToNow } from 'date-fns-jalali';
-
-// یک تابع برای دریافت داده‌ها از API جدید
-const fetchDashboardStats = async () => {
-  const response = await fetch('http://localhost:3001/api/dashboard/stats');
-  if (!response.ok) {
-    throw new Error('خطا در دریافت اطلاعات داشبورد');
-  }
-  return response.json();
-};
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-
-  // استفاده از useQuery برای دریافت و مدیریت داده‌ها، کش و وضعیت لودینگ
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['dashboardStats'],
-    queryFn: fetchDashboardStats
-  });
-
-  // نمایش وضعیت لودینگ تا زمان دریافت داده‌ها
-  if (isLoading) {
-    return <DashboardSkeleton />;
-  }
-
-  // نمایش خطا در صورت بروز مشکل
-  if (isError) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 text-red-600 bg-red-50 rounded-lg">
-        <AlertCircle className="w-12 h-12 mb-4" />
-        <h2 className="text-xl font-bold">خطا در بارگذاری داشبورد</h2>
-        <p>{error.message}</p>
-      </div>
-    );
-  }
-
-  // داده‌های واقعی برای کارت‌های KPI
+  // Mock data - will be replaced with real data later
   const kpiData = [
-    { title: "کل کارکنان", value: data?.totalEmployees ?? 0, icon: Users },
-    { title: "وظایف تکمیل شده", value: data?.totalCompletedTasks ?? 0, icon: CheckCircle },
-    { title: "وظایف در انتظار", value: data?.totalPendingTasks ?? 0, icon: Clock },
+    {
+      title: "کل کارکنان",
+      value: 20,
+      icon: Users,
+      trend: { value: 5, label: "از ماه گذشته" }
+    },
+    {
+      title: "وظایف تکمیل شده",
+      value: 45,
+      icon: CheckCircle,
+      trend: { value: 12, label: "این هفته" }
+    },
+    {
+      title: "وظایف در انتظار",
+      value: 12,
+      icon: Clock,
+      trend: { value: -8, label: "از دیروز" }
+    },
+    {
+      title: "فروش امروز",
+      value: "₯۱۲٫۵M",
+      icon: TrendingUp,
+      trend: { value: 23, label: "از دیروز" }
+    }
+  ];
+
+  const recentActivities = [
+    { id: 1, text: "کارمند جدید اضافه شد", time: "۲ ساعت پیش", type: "user" },
+    { id: 2, text: "گزارش فروش شعبه تهران", time: "۴ ساعت پیش", type: "sales" },
+    { id: 3, text: "درخواست مرخصی تایید شد", time: "۶ ساعت پیش", type: "leave" },
+    { id: 4, text: "وظیفه جدید تعریف شد", time: "۸ ساعت پیش", type: "task" }
   ];
 
   return (
-    <div className="p-4 md:p-6 space-y-6 animate-fade-in">
-      {/* بخش خوش‌آمدگویی پویا */}
-      <div className="p-6 md:p-8 text-white bg-indigo-600 rounded-2xl shadow-lg">
-        <h1 className="text-2xl md:text-3xl font-bold mb-2">خوش آمدید، {user?.fullName || 'کاربر'}!</h1>
-        <p className="text-indigo-100 text-base md:text-lg">
-          سیستم مدیریت هوشمند وش‌نیا در خدمت شماست.
+    <div className="space-y-6 animate-fade-in">
+      {/* Welcome Section */}
+      <div className="bg-gradient-primary rounded-2xl p-8 text-primary-foreground shadow-strong">
+        <h1 className="text-3xl font-bold mb-2">خوش آمدید به سیستم مدیریت وش‌نیا</h1>
+        <p className="text-primary-foreground/80 text-lg">
+          مدیریت کارکنان، وظایف و فروش در یک مکان
         </p>
       </div>
 
-      {/* کارت‌های KPI با داده‌های واقعی */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {kpiData.map((kpi, index) => (
-          <KpiCard
+          <div 
             key={index}
-            title={kpi.title}
-            value={kpi.value}
-            icon={kpi.icon}
             className="animate-slide-up"
             style={{ animationDelay: `${index * 100}ms` }}
-          />
+          >
+            <KpiCard
+              title={kpi.title}
+              value={kpi.value}
+              icon={kpi.icon}
+              trend={kpi.trend}
+            />
+          </div>
         ))}
       </div>
 
-      {/* فعالیت‌های اخیر و اقدامات سریع */}
+      {/* Charts and Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
+        {/* Quick Stats Chart Placeholder */}
+        <Card className="lg:col-span-2 glass-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-5 h-5" />
+              نمودار عملکرد هفتگی
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64 bg-gradient-secondary rounded-lg flex items-center justify-center">
+              <p className="text-muted-foreground">نمودارهای تفصیلی در نسخه بعدی</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Recent Activities */}
+        <Card className="glass-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
@@ -93,51 +102,50 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {data?.recentActivities?.length > 0 ? (
-              data.recentActivities.map((activity: any) => (
-                <div key={activity.id} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <Activity className="w-5 h-5 mt-1 text-indigo-500 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{activity.title}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
-                    </p>
-                  </div>
+            {recentActivities.map((activity) => (
+              <div key={activity.id} className="flex items-start gap-3 p-3 bg-secondary/50 rounded-lg">
+                <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0"></div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground">{activity.text}</p>
+                  <p className="text-xs text-muted-foreground">{activity.time}</p>
                 </div>
-              ))
-            ) : (
-              <p className="text-center text-gray-500 py-8">فعالیت اخیری ثبت نشده است.</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>عملیات سریع</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col space-y-3">
-            <Button onClick={() => navigate('/employees/add')}><Users className="w-4 h-4 ml-2" /> افزودن کارمند</Button>
-            <Button onClick={() => navigate('/tasks')} variant="secondary"><CheckCircle className="w-4 h-4 ml-2" /> مدیریت وظایف</Button>
+              </div>
+            ))}
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick Actions */}
+      <Card className="glass-card">
+        <CardHeader>
+          <CardTitle>عملیات سریع</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Button 
+              onClick={() => navigate('/employees/new')}
+              className="p-4 bg-gradient-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity h-auto flex-col"
+            >
+              <Users className="w-6 h-6 mx-auto mb-2" />
+              <p className="text-sm font-medium">افزودن کارمند</p>
+            </Button>
+            <Button 
+              onClick={() => navigate('/tasks?new=1')}
+              className="p-4 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors h-auto flex-col"
+            >
+              <CheckCircle className="w-6 h-6 mx-auto mb-2" />
+              <p className="text-sm font-medium">ثبت وظیفه</p>
+            </Button>
+            <Button 
+              onClick={() => navigate('/sales-report/new')}
+              className="p-4 bg-accent text-accent-foreground rounded-lg hover:bg-accent/80 transition-colors h-auto flex-col"
+            >
+              <TrendingUp className="w-6 h-6 mx-auto mb-2" />
+              <p className="text-sm font-medium">گزارش فروش</p>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
-
-
-// کامپوننت اسکلت برای نمایش در زمان لودینگ
-const DashboardSkeleton = () => (
-  <div className="p-4 md:p-6 space-y-6">
-    <Skeleton className="h-32 w-full rounded-2xl" />
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      <Skeleton className="h-32 rounded-lg" />
-      <Skeleton className="h-32 rounded-lg" />
-      <Skeleton className="h-32 rounded-lg" />
-    </div>
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <Skeleton className="lg:col-span-2 h-64 rounded-lg" />
-      <Skeleton className="h-64 rounded-lg" />
-    </div>
-  </div>
-);
