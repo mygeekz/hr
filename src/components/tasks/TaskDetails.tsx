@@ -3,6 +3,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Download, FileText, Image, Calendar, User, Building, Flag, Clock } from "lucide-react";
+import jalaali from 'jalaali-js';
+
+// تابع برای تبدیل تاریخ میلادی به شمسی
+const convertToJalali = (date: string) => {
+  const gregorianDate = new Date(date);
+  const jDate = jalaali.toJalaali(gregorianDate.getFullYear(), gregorianDate.getMonth() + 1, gregorianDate.getDate());
+  return `${jDate.jd}/${jDate.jm}/${jDate.jy}`; // خروجی تاریخ شمسی
+};
+
+// تابع برای تبدیل اعداد انگلیسی به فارسی
+const convertNumbersToPersian = (text: string) => {
+  const persianNumbers = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  return text.replace(/\d/g, (match) => persianNumbers[parseInt(match)]);
+};
 
 interface Task {
   id: string;
@@ -91,9 +105,9 @@ export function TaskDetails({ task, onClose }: TaskDetailsProps) {
           
           <div class="task-info">
             <h3>تاریخ‌ها</h3>
-            <div class="detail-row"><span class="label">تاریخ تعیین:</span> ${task.assignedDate}</div>
-            <div class="detail-row"><span class="label">تاریخ تحویل:</span> ${task.dueDate}</div>
-            ${task.completedDate ? `<div class="detail-row"><span class="label">تاریخ تکمیل:</span> ${task.completedDate}</div>` : ''}
+            <div class="detail-row"><span class="label">تاریخ تعیین:</span> ${convertNumbersToPersian(convertToJalali(task.assignedDate))}</div>
+            <div class="detail-row"><span class="label">تاریخ تحویل:</span> ${convertNumbersToPersian(convertToJalali(task.dueDate))}</div>
+            ${task.completedDate ? `<div class="detail-row"><span class="label">تاریخ تکمیل:</span> ${convertNumbersToPersian(convertToJalali(task.completedDate))}</div>` : ''}
           </div>
           
           <div class="task-info">
@@ -177,16 +191,16 @@ export function TaskDetails({ task, onClose }: TaskDetailsProps) {
           <CardContent className="space-y-3">
             <div>
               <span className="font-medium text-muted-foreground">تاریخ تعیین:</span>
-              <div className="mt-1">{task.assignedDate}</div>
+              <div className="mt-1">{convertNumbersToPersian(convertToJalali(task.assignedDate))}</div>
             </div>
             <div>
               <span className="font-medium text-muted-foreground">تاریخ تحویل:</span>
-              <div className="mt-1">{task.dueDate}</div>
+              <div className="mt-1">{convertNumbersToPersian(convertToJalali(task.dueDate))}</div>
             </div>
             {task.completedDate && (
               <div>
                 <span className="font-medium text-muted-foreground">تاریخ تکمیل:</span>
-                <div className="mt-1 text-green-600">{task.completedDate}</div>
+                <div className="mt-1 text-green-600">{convertNumbersToPersian(convertToJalali(task.completedDate))}</div>
               </div>
             )}
           </CardContent>
@@ -204,7 +218,7 @@ export function TaskDetails({ task, onClose }: TaskDetailsProps) {
       </Card>
 
       {/* Attachments */}
-      {task.attachments.length > 0 && (
+      {task.attachments && task.attachments.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>پیوست‌های فایل</CardTitle>

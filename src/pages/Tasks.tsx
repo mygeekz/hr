@@ -1,16 +1,36 @@
 import { useState, useMemo, useEffect } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Trash2, Edit, Eye, Plus, Search, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { TaskForm } from "@/components/tasks/TaskForm";
 import { TaskDetails } from "@/components/tasks/TaskDetails";
+import { get, post, del } from '@/lib/http';
+import jalaali from 'jalaali-js';
+
+// تابع برای تبدیل تاریخ میلادی به شمسی
+const convertToJalali = (date: string) => {
+  const gregorianDate = new Date(date);
+  const jDate = jalaali.toJalaali(gregorianDate.getFullYear(), gregorianDate.getMonth() + 1, gregorianDate.getDate());
+  return `${jDate.jd}/${jDate.jm}/${jDate.jy}`; // خروجی تاریخ شمسی
+};
+
+// تابع برای تبدیل اعداد انگلیسی به فارسی
+const convertNumbersToPersian = (text: string) => {
+  const persianNumbers = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  return text.replace(/\d/g, (match) => persianNumbers[parseInt(match)]);
+};
+
+interface Employee {
+  id: string;
+  fullName: string;
+}
 
 interface Task {
   id: string;
@@ -25,62 +45,17 @@ interface Task {
   completedDate?: string;
 }
 
-// Mock data
-const mockTasks: Task[] = [
-  {
-    id: "TASK001",
-    employeeName: "احمد محمدی",
-    description: "تهیه گزارش ماهانه فروش",
-    assignedDate: "1404/03/01",
-    dueDate: "1404/03/15",
-    status: "in-progress",
-    priority: "high",
-    department: "فروش",
-    attachments: [],
-  },
-  {
-    id: "TASK002",
-    employeeName: "فاطمه احمدی",
-    description: "بررسی قراردادهای جدید",
-    assignedDate: "1404/03/05",
-    dueDate: "1404/03/20",
-    status: "pending",
-    priority: "medium",
-    department: "حقوقی",
-    attachments: [],
-  },
-  {
-    id: "TASK003",
-    employeeName: "علی رضایی",
-    description: "توسعه ماژول جدید سیستم",
-    assignedDate: "1404/02/20",
-    dueDate: "1404/03/10",
-    status: "completed",
-    priority: "high",
-    department: "فناوری اطلاعات",
-    attachments: [],
-    completedDate: "1404/03/08",
-  },
-];
-
-const mockEmployees = [
-  "احمد محمدی",
-  "فاطمه احمدی", 
-  "علی رضایی",
-  "مریم صادقی",
-  "حسن کریمی"
-];
-
 const departments = [
   "فروش",
-  "حقوقی", 
+  "حقوقی",
   "فناوری اطلاعات",
   "منابع انسانی",
   "مالی"
 ];
 
 export default function Tasks() {
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
@@ -92,11 +67,40 @@ export default function Tasks() {
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Check if we should open the new task modal immediately
+  const fetchTasks = async () => {
+    try {
+      const data = await get('/tasks');
+      setTasks(data);
+    } catch (error) {
+      toast({
+        title: "خطا",
+        description: "دریافت لیست وظایف با مشکل مواجه شد",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const fetchEmployees = async () => {
+    try {
+      const data = await get('/employees');
+      setEmployees(data);
+    } catch (error) {
+      toast({
+        title: "خطا",
+        description: "دریافت لیست کارمندان با مشکل مواجه شد",
+        variant: "destructive",
+      });
+    }
+  };
+
+  useEffect(() => {
+    fetchTasks();
+    fetchEmployees();
+  }, []);
+
   useEffect(() => {
     if (searchParams.get('new') === '1') {
       setIsTaskFormOpen(true);
-      // Remove the parameter after opening the modal
       searchParams.delete('new');
       setSearchParams(searchParams);
     }
@@ -122,11 +126,11 @@ export default function Tasks() {
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
-      const matchesSearch = 
+      const matchesSearch =
         task.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         task.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
         task.id.toLowerCase().includes(searchTerm.toLowerCase());
-      
+
       const matchesStatus = statusFilter === "all" || task.status === statusFilter;
       const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
       const matchesDepartment = departmentFilter === "all" || task.department === departmentFilter;
@@ -135,41 +139,52 @@ export default function Tasks() {
     });
   }, [tasks, searchTerm, statusFilter, priorityFilter, departmentFilter]);
 
-  const handleCreateTask = (taskData: Omit<Task, "id">) => {
-    const newTask: Task = {
-      ...taskData,
-      id: `TASK${String(tasks.length + 1).padStart(3, "0")}`,
-    };
-    setTasks([...tasks, newTask]);
-    setIsTaskFormOpen(false);
-    toast({
-      title: "وظیفه ایجاد شد",
-      description: "وظیفه جدید با موفقیت ایجاد شد.",
-    });
-  };
-
-  const handleEditTask = (taskData: Omit<Task, "id">) => {
-    if (!editingTask) return;
-    
-    const updatedTasks = tasks.map((task) =>
-      task.id === editingTask.id ? { ...taskData, id: editingTask.id } : task
-    );
-    setTasks(updatedTasks);
-    setEditingTask(null);
-    setIsTaskFormOpen(false);
-    toast({
-      title: "وظیفه بروزرسانی شد",
-      description: "تغییرات با موفقیت ذخیره شد.",
-    });
-  };
-
-  const handleDeleteTask = (taskId: string) => {
-    if (confirm("آیا از حذف این وظیفه اطمینان دارید؟")) {
-      setTasks(tasks.filter((task) => task.id !== taskId));
+  const handleCreateTask = async (taskData: any) => {
+    try {
+      const newTask = {
+        ...taskData,
+        id: `TASK${Date.now()}`,
+      };
+      await post('/tasks', newTask);
+      await fetchTasks();
+      setIsTaskFormOpen(false);
       toast({
-        title: "وظیفه حذف شد",
-        description: "وظیفه با موفقیت حذف شد.",
+        title: "وظیفه ایجاد شد",
+        description: "وظیفه جدید با موفقیت ایجاد شد.",
       });
+    } catch (error) {
+      toast({ title: "خطا", description: "ایجاد وظیفه با مشکل مواجه شد.", variant: "destructive" });
+    }
+  };
+
+  const handleEditTask = async (taskData: any) => {
+    if (!editingTask) return;
+    try {
+      await post(`/tasks/${editingTask.id}`, taskData, 'PUT');
+      await fetchTasks();
+      setEditingTask(null);
+      setIsTaskFormOpen(false);
+      toast({
+        title: "وظیفه بروزرسانی شد",
+        description: "تغییرات با موفقیت ذخیره شد.",
+      });
+    } catch (error) {
+      toast({ title: "خطا", description: "بروزرسانی وظیفه با مشکل مواجه شد.", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (confirm("آیا از حذف این وظیفه اطمینان دارید؟")) {
+      try {
+        await del(`/tasks/${taskId}`);
+        await fetchTasks();
+        toast({
+          title: "وظیفه حذف شد",
+          description: "وظیفه با موفقیت حذف شد.",
+        });
+      } catch (error) {
+        toast({ title: "خطا", description: "حذف وظیفه با مشکل مواجه شد.", variant: "destructive" });
+      }
     }
   };
 
@@ -292,8 +307,8 @@ export default function Tasks() {
                 ))}
               </SelectContent>
             </Select>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 setSearchTerm("");
                 setStatusFilter("all");
@@ -344,7 +359,7 @@ export default function Tasks() {
                         {getPriorityBadge(task.priority).label}
                       </Badge>
                     </TableCell>
-                    <TableCell>{task.dueDate}</TableCell>
+                    <TableCell>{convertNumbersToPersian(convertToJalali(task.dueDate))}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Button
@@ -393,7 +408,7 @@ export default function Tasks() {
           </DialogHeader>
           <TaskForm
             task={editingTask}
-            employees={mockEmployees}
+            employees={employees}
             departments={departments}
             onSubmit={editingTask ? handleEditTask : handleCreateTask}
             onCancel={() => setIsTaskFormOpen(false)}
@@ -408,8 +423,8 @@ export default function Tasks() {
             <DialogTitle>جزئیات وظیفه</DialogTitle>
           </DialogHeader>
           {selectedTask && (
-            <TaskDetails 
-              task={selectedTask} 
+            <TaskDetails
+              task={selectedTask}
               onClose={() => setIsTaskDetailsOpen(false)}
             />
           )}

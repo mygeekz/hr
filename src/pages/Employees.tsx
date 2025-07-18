@@ -1,3 +1,5 @@
+// src/pages/Employees.tsx
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -18,30 +20,30 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Search,
-  Plus,
-  MoreHorizontal,
-  Edit,
-  Trash2,
+import { 
+  Search, 
+  Plus, 
+  MoreHorizontal, 
+  Edit, 
+  Trash2, 
   Users,
   Filter
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-
+import { get, del } from '@/lib/http'; // <<< ایمپورت توابع جدید
 
 // Define the Employee type
 interface Employee {
-    id: string;
-    fullName: string;
-    jobTitle: string;
-    department: string;
-    contactNumber: string;
-    email: string;
-    status: 'active' | 'inactive';
-    dateJoined: string;
-    photo: string | null;
+  id: string;
+  fullName: string;
+  jobTitle: string;
+  department: string;
+  contactNumber: string;
+  email: string;
+  status: 'active' | 'inactive';
+  dateJoined: string;
+  photo: string | null;
 }
 
 export default function Employees() {
@@ -53,42 +55,35 @@ export default function Employees() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // Fetch employees from the API
-  useEffect(() => {
-    const fetchEmployees = async () => {
-      try {
-        const response = await fetch('http://localhost:3001/api/employees');
-        const data = await response.json();
-        setEmployees(data);
-      } catch (error) {
-        console.error('Failed to fetch employees:', error);
-        toast({
-          title: "خطا",
-          description: "دریافت اطلاعات کارکنان با مشکل مواجه شد",
-          variant: "destructive",
-        });
-      }
-    };
-    fetchEmployees();
-  }, [toast]);
+  // تابع برای دریافت اطلاعات کارمندان از سرور
+  const fetchEmployees = async () => {
+    try {
+      const data = await get('/employees');
+      setEmployees(data);
+    } catch (error) {
+      console.error('Failed to fetch employees:', error);
+      toast({
+        title: "خطا",
+        description: "دریافت اطلاعات کارکنان با مشکل مواجه شد",
+        variant: "destructive",
+      });
+    }
+  };
 
+  // دریافت اطلاعات هنگام بارگذاری کامپوننت
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
 
   const handleDelete = async (employeeId: string) => {
     if (confirm("آیا از حذف این کارمند اطمینان دارید؟")) {
       try {
-        const response = await fetch(`http://localhost:3001/api/employees/${employeeId}`, {
-          method: 'DELETE',
+        await del(`/employees/${employeeId}`); // <<< استفاده از تابع del
+        toast({
+          title: "موفقیت",
+          description: "کارمند با موفقیت حذف شد",
         });
-
-        if (response.ok) {
-          setEmployees(prev => prev.filter(emp => emp.id !== employeeId));
-          toast({
-            title: "موفقیت",
-            description: "کارمند با موفقیت حذف شد",
-          });
-        } else {
-          throw new Error('Failed to delete employee');
-        }
+        fetchEmployees(); // دریافت مجدد لیست کارمندان
       } catch (error) {
         toast({
           title: "خطا",
@@ -99,19 +94,16 @@ export default function Employees() {
     }
   };
 
-
-  // Filter employees based on search term and status
+  // فیلتر کردن کارمندان
   const filteredEmployees = employees.filter(employee => {
     const matchesSearch = employee.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         employee.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         employee.jobTitle.toLowerCase().includes(searchTerm.toLowerCase());
-
+                          employee.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          employee.jobTitle.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || employee.status === statusFilter;
-
     return matchesSearch && matchesStatus;
   });
 
-  // Pagination
+  // منطق صفحه‌بندی
   const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedEmployees = filteredEmployees.slice(startIndex, startIndex + itemsPerPage);
@@ -145,7 +137,6 @@ export default function Employees() {
             مدیریت اطلاعات کارکنان و پرسنل شرکت
           </p>
         </div>
-
         <Button
           onClick={() => navigate('/employees/add')}
           className="bg-gradient-primary hover:opacity-90 shadow-medium"
@@ -170,7 +161,6 @@ export default function Employees() {
             </div>
           </CardContent>
         </Card>
-
         <Card className="glass-card">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
@@ -186,7 +176,6 @@ export default function Employees() {
             </div>
           </CardContent>
         </Card>
-
         <Card className="glass-card">
           <CardContent className="p-6">
             <div className="flex items-center gap-4">
@@ -222,7 +211,6 @@ export default function Employees() {
                 />
               </div>
             </div>
-
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="gap-2">
@@ -231,15 +219,9 @@ export default function Employees() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="bg-card">
-                <DropdownMenuItem onClick={() => setStatusFilter('all')}>
-                  همه
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStatusFilter('active')}>
-                  فعال
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setStatusFilter('inactive')}>
-                  غیرفعال
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setStatusFilter('all')}>همه</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setStatusFilter('active')}>فعال</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setStatusFilter('inactive')}>غیرفعال</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -269,9 +251,7 @@ export default function Employees() {
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                          <span className="text-sm font-medium text-primary">
-                            {employee.fullName.charAt(0)}
-                          </span>
+                          <span className="text-sm font-medium text-primary">{employee.fullName.charAt(0)}</span>
                         </div>
                         <div>
                           <p className="font-medium">{employee.fullName}</p>
@@ -285,26 +265,10 @@ export default function Employees() {
                     <TableCell>{getStatusBadge(employee.status)}</TableCell>
                     <TableCell>
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
+                        <DropdownMenuTrigger asChild><Button variant="ghost" size="sm"><MoreHorizontal className="w-4 h-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="bg-card">
-                          <DropdownMenuItem
-                            onClick={() => handleEdit(employee.id)}
-                            className="gap-2"
-                          >
-                            <Edit className="w-4 h-4" />
-                            ویرایش
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleDelete(employee.id)}
-                            className="gap-2 text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            حذف
-                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEdit(employee.id)} className="gap-2"><Edit className="w-4 h-4" />ویرایش</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDelete(employee.id)} className="gap-2 text-destructive focus:text-destructive"><Trash2 className="w-4 h-4" />حذف</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -313,36 +277,15 @@ export default function Employees() {
               </TableBody>
             </Table>
           </div>
-
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between p-4 border-t border-border">
               <p className="text-sm text-muted-foreground">
                 نمایش {startIndex + 1} تا {Math.min(startIndex + itemsPerPage, filteredEmployees.length)} از {filteredEmployees.length} کارمند
               </p>
-
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                >
-                  قبلی
-                </Button>
-
-                <span className="text-sm font-medium px-3">
-                  صفحه {currentPage} از {totalPages}
-                </span>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                >
-                  بعدی
-                </Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1}>قبلی</Button>
+                <span className="text-sm font-medium px-3">صفحه {currentPage} از {totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages}>بعدی</Button>
               </div>
             </div>
           )}
@@ -359,12 +302,8 @@ export default function Employees() {
               {searchTerm ? 'هیچ کارمندی با این معیارهای جستجو یافت نشد' : 'هنوز کارمندی اضافه نشده است'}
             </p>
             {!searchTerm && (
-              <Button
-                onClick={() => navigate('/employees/add')}
-                className="bg-gradient-primary hover:opacity-90"
-              >
-                <Plus className="w-4 h-4 ml-2" />
-                افزودن اولین کارمند
+              <Button onClick={() => navigate('/employees/add')} className="bg-gradient-primary hover:opacity-90">
+                <Plus className="w-4 h-4 ml-2" />افزودن اولین کارمند
               </Button>
             )}
           </CardContent>

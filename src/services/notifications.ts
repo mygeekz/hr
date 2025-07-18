@@ -1,14 +1,12 @@
 /**
  * سرویس اعلان‌ها (in‑app + SMS)
  * تمام فراخوانی‌های HTTP از Helper مشترک استفاده می‌کنند
- * تا به صورت خودکار روی IP سرور شما (یا همان پراکسی Vite در dev)
- * ارسال شوند و دیگر «localhost:3001» در هیچ سیستمی دیده نشود.
  */
-import { api } from "@/lib/http";       // Helper مرکزی که قبلاً ساختیم
-import { smsService } from "./sms";     // سرویس ارسال پیامک
+import { get, post } from "@/lib/http";
+import { smsService } from "./sms";
 
 /* ------------------------------------------------------------------ */
-/* انواع                                                              */
+/* انواع                                                             */
 /* ------------------------------------------------------------------ */
 
 export interface Notification {
@@ -33,20 +31,12 @@ interface NotificationPayload {
 /* ------------------------------------------------------------------ */
 
 class NotificationService {
-  /* مشترکان ریِل‑تایم (وب‌سوکت نداریم، همین سطح کفایت می‌کند) */
   private subscribers: Array<(n: Notification) => void> = [];
-
-  /* مسیر پایهٔ API */
   private readonly base = "/notifications";
 
   /** ایجاد اعلان جدید (همه جا استفاده می‌شود) */
   private async create(payload: NotificationPayload): Promise<Notification> {
-    const notif = await api<Notification>(this.base, {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
-
-    /* Notify local subscribers for live updates */
+    const notif = await post<Notification>(this.base, payload);
     this.subscribers.forEach((cb) => cb(notif));
     return notif;
   }
@@ -113,13 +103,14 @@ class NotificationService {
   /* --------------------- متدهای عمومی کمکی ------------------------- */
 
   /** دریافت اعلان‌های یک کاربر */
-  getAll(userId: string) {
-    return api<Notification[]>(`${this.base}?userId=${userId}`);
+  // <<< تغییر اصلی: نام تابع به getNotifications تغییر کرد >>>
+  getNotifications(userId: string) {
+    return get<Notification[]>(`${this.base}?userId=${userId}`);
   }
 
   /** علامت‌گذاری به عنوان خوانده‌شده */
   markAsRead(id: number) {
-    return api(`${this.base}/${id}/read`, { method: "PUT" });
+    return post(`${this.base}/${id}/read`, {}, "PUT");
   }
 
   /** سابسکرایب برای دریافت اعلان‌های جدید در همان تب */

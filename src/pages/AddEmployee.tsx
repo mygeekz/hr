@@ -1,5 +1,5 @@
-import { api } from "@/lib/http";
-import { useState } from 'react';
+import { postWithFiles, get } from "@/lib/http";
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -7,10 +7,12 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Shield } from 'lucide-react'; // آیکون Shield اضافه شد
+
 import {
   Form,
   FormControl,
@@ -44,23 +46,37 @@ import {
   Building,
   CalendarDays,
   UserCheck,
-  ShieldQuestion
+  ShieldQuestion,
+  Cake,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/number-to-persian';
 import PersianDatePicker from '@/components/PersianDatePicker';
 
+// --- تعریف اینترفیس‌ها برای داده‌های دریافتی ---
+interface Branch {
+  id: string;
+  name: string;
+}
+
+interface Position {
+  id: string;
+  title: string;
+}
+interface Department { 
+  id: string;
+  name: string; }
 // Form validation schema
 const addEmployeeSchema = z.object({
   fullName: z.string().min(2, 'نام باید حداقل ۲ کاراکتر باشد'),
   nationalId: z.string().regex(/^\d{10}$/, 'کد ملی باید ۱۰ رقم باشد'),
   employeeId: z.string().min(3, 'کد کارمندی باید حداقل ۳ کاراکتر باشد'),
-  jobTitle: z.string().min(2, 'سمت باید حداقل ۲ کاراکتر باشد'),
+  jobTitle: z.string().min(1, 'انتخاب سمت اجباری است'),
   department: z.string().min(1, 'انتخاب بخش اجباری است'),
   branch: z.string().min(1, 'انتخاب شعبه اجباری است'),
   contactNumber: z.string().regex(/^09\d{9}$/, 'شماره موبایل معتبر وارد کنید'),
-  email: z.string().email('ایمیل معتبر وارد کنید').optional().or(z.literal('')),
-  dateOfJoining: z.string().min(1, 'تاریخ استخدام اجباری است'),
+  dateOfBirth: z.string().min(1, 'تاریخ تولد اجباری است'),
+  dateJoined: z.string().min(1, 'تاریخ استخدام اجباری است'),
   monthlySalary: z.number().min(1, 'مبلغ حقوق باید بیشتر از صفر باشد'),
   status: z.enum(['active', 'inactive']),
   gender: z.enum(['male', 'female'], {
@@ -88,6 +104,7 @@ type FileAttachment = {
   uploadDate: Date;
 };
 
+
 export default function AddEmployee() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -95,8 +112,13 @@ export default function AddEmployee() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [documentFiles, setDocumentFiles] = useState<File[]>([]);
   const [fileAttachments, setFileAttachments] = useState<FileAttachment[]>([]);
+  
+  // *** تغییر ۱: تعریف state برای داده‌های داینامیک ***
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]); // State جدید
 
-  const form = useForm<AddEmployeeForm>({
+    const form = useForm<AddEmployeeForm>({
     resolver: zodResolver(addEmployeeSchema),
     defaultValues: {
       fullName: '',
@@ -106,16 +128,42 @@ export default function AddEmployee() {
       department: '',
       branch: '',
       contactNumber: '',
-      email: '',
+      dateOfBirth: '',
       monthlySalary: 0,
       status: 'active',
       gender: 'male' as const,
       militaryStatus: 'completed',
       additionalNotes: '',
       tasks: [],
-      dateOfJoining: '',
+      dateJoined: '',
     },
   });
+
+  // *** تغییر ۲: دریافت اطلاعات از سرور هنگام بارگذاری صفحه ***
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [branchesData, positionsData, departmentsData] = await Promise.all([
+          get('/branches'),
+          get('/positions'),
+	      get('/departments'), // دریافت لیست بخش‌ها
+
+        ]);
+        setBranches(branchesData);
+        setPositions(positionsData);
+		setDepartments(departmentsData); // ذخیره در state
+
+      } catch (error) {
+        toast({
+          title: 'خطا در دریافت اطلاعات پایه',
+          description: 'لیست شعب و سمت‌ها از سرور دریافت نشد.',
+          variant: 'destructive',
+        });
+      }
+    };
+    fetchData();
+  }, [toast]);
+
 
   const watchGender = form.watch('gender');
 
@@ -130,29 +178,27 @@ export default function AddEmployee() {
     const fd = new FormData();
 
     Object.entries(data).forEach(([k, v]) => {
-      if (k === 'tasks') fd.append(k, JSON.stringify(v ?? []));
-      else if (v !== undefined && v !== null) fd.append(k, String(v));
+      if (k === 'tasks' && Array.isArray(v)) { fd.append(k, JSON.stringify(v)); }
+      else if (v !== undefined && v !== null) { fd.append(k, String(v)); }
     });
-    if (photoFile) fd.append('photo', photoFile);
-    documentFiles.forEach(f => fd.append('documents', f));
+    if (photoFile) { fd.append('photo', photoFile); }
+    documentFiles.forEach(file => { fd.append('documents', file); });
 
     try {
-	  const res = await api("/api/employees", { method: "POST", body: fd }, true); // ←  پارامتر سوم چون FormData است
-	  if (!res.ok) throw new Error("Network response was not ok");
-
-	  toast({ title: "موفقیت", description: "کارمند جدید با موفقیت اضافه شد" });
-	  navigate("/employees");
-	} catch (error) {
-	  toast({
-		title: "خطا",
-		description: "ثبت اطلاعات با مشکل مواجه شد",
-		variant: "destructive",
-	  });
-	  console.error("Failed to create employee:", error);
-	} finally {
-	  setIsLoading(false);
-	}
-
+      await postWithFiles('/employees', fd);
+      
+      toast({ title: "موفقیت", description: "کارمند جدید با موفقیت اضافه شد" });
+      navigate("/employees");
+    } catch (error) {
+      toast({
+        title: "خطا",
+        description: "ثبت اطلاعات با مشکل مواجه شد",
+        variant: "destructive"
+      });
+      console.error("Failed to create employee:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
 
@@ -235,10 +281,40 @@ export default function AddEmployee() {
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <Card className="glass-card border-primary/20">
             <CardHeader><CardTitle className="flex items-center gap-2 text-primary"><User className="w-6 h-6" />اطلاعات شخصی</CardTitle></CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-12">
               <FormField control={form.control} name="fullName" render={({ field }) => (
                 <FormItem><FormLabel className="flex items-center gap-2"><User className="w-4 h-4" />نام و نام خانوادگی *</FormLabel>
                   <FormControl><Input placeholder="مثال: علی محمدی" {...field} disabled={isLoading} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+			  <FormField
+                control={form.control}
+                name="dateOfBirth"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2"><Cake className="w-4 h-4" />تاریخ تولد *</FormLabel>
+                    <FormControl>
+                      <PersianDatePicker
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="انتخاب تاریخ تولد"
+                        disabled={isLoading}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+              )} />
+             
+              <FormField control={form.control} name="dateJoined" render={({ field }) => (
+                <FormItem><FormLabel className="flex items-center gap-2"><CalendarDays className="w-4 h-4" />تاریخ استخدام *</FormLabel>
+                  <FormControl><PersianDatePicker value={field.value} onChange={field.onChange} placeholder="انتخاب تاریخ" disabled={isLoading} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+			  <FormField control={form.control} name="contactNumber" render={({ field }) => (
+                <FormItem><FormLabel className="flex items-center gap-2"><Phone className="w-4 h-4" />شماره تماس *</FormLabel>
+                  <FormControl><Input placeholder="مثال: 09123456789" {...field} disabled={isLoading} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -248,29 +324,34 @@ export default function AddEmployee() {
                   <FormMessage />
                 </FormItem>
               )} />
-              <FormField control={form.control} name="contactNumber" render={({ field }) => (
-                <FormItem><FormLabel className="flex items-center gap-2"><Phone className="w-4 h-4" />شماره تماس *</FormLabel>
-                  <FormControl><Input placeholder="مثال: 09123456789" {...field} disabled={isLoading} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="email" render={({ field }) => (
-                <FormItem><FormLabel className="flex items-center gap-2"><AtSign className="w-4 h-4" />ایمیل</FormLabel>
-                  <FormControl><Input type="email" placeholder="example@domain.com" {...field} disabled={isLoading} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="gender" render={({ field }) => (
-                <FormItem><FormLabel>جنسیت *</FormLabel>
+              
+              <FormField
+                control={form.control}
+                name="gender"
+                render={({ field }) => (
+                <FormItem>
+                  <FormLabel>جنسیت *</FormLabel>
                   <FormControl>
-                    <RadioGroup onValueChange={field.onChange} value={field.value} className="flex items-center pt-2 gap-6" disabled={isLoading}>
-                      <div className="flex items-center space-x-2 space-x-reverse"><RadioGroupItem value="male" id="male" /><Label htmlFor="male">مرد</Label></div>
-                      <div className="flex items-center space-x-2 space-x-reverse"><RadioGroupItem value="female" id="female" /><Label htmlFor="female">زن</Label></div>
-                    </RadioGroup>
+                    <ToggleGroup
+                      type="single"
+                      variant="outline"
+                      className="grid w-full grid-cols-2"
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                      disabled={isLoading}
+                    >
+                      <ToggleGroupItem value="male" aria-label="انتخاب مرد" className="w-full data-[state=on]:bg-primary/10 data-[state=on]:text-primary">
+                        مرد
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="female" aria-label="انتخاب زن" className="w-full data-[state=on]:bg-pink-100 data-[state=on]:text-pink-600">
+                        زن
+                      </ToggleGroupItem>
+                    </ToggleGroup>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
-              )} />
+              )}
+            />
               <FormField control={form.control} name="militaryStatus" render={({ field }) => (
                   <FormItem>
                       <FormLabel className="flex items-center gap-2"><ShieldQuestion className="w-4 h-4" />وضعیت نظام وظیفه</FormLabel>
@@ -286,71 +367,95 @@ export default function AddEmployee() {
                       <FormMessage />
                   </FormItem>
               )} />
-            </CardContent>
-          </Card>
-
-          <Card className="glass-card border-green-500/20">
-            <CardHeader><CardTitle className="flex items-center gap-2 text-green-600"><Briefcase className="w-6 h-6" />جزئیات استخدام</CardTitle></CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <FormField control={form.control} name="employeeId" render={({ field }) => (
+			   <FormField control={form.control} name="employeeId" render={({ field }) => (
                 <FormItem><FormLabel className="flex items-center gap-2"><UserCheck className="w-4 h-4" />کد کارمندی *</FormLabel>
                   <FormControl><Input placeholder="مثال: EMP001" {...field} disabled={isLoading} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
+              
+              {/* *** تغییر کلیدی ۳: اتصال فیلد "سمت" به داده‌های داینامیک *** */}
               <FormField control={form.control} name="jobTitle" render={({ field }) => (
                 <FormItem><FormLabel>سمت *</FormLabel>
-                  <FormControl><Input placeholder="مثال: مدیر فروش" {...field} disabled={isLoading} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="department" render={({ field }) => (
-                <FormItem><FormLabel>بخش *</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="انتخاب بخش" /></SelectTrigger></FormControl>
+                    <FormControl><SelectTrigger><SelectValue placeholder="انتخاب سمت" /></SelectTrigger></FormControl>
                     <SelectContent className="bg-card">
-                      <SelectItem value="sales">فروش</SelectItem>
-                      <SelectItem value="finance">مالی</SelectItem>
-                      <SelectItem value="hr">منابع انسانی</SelectItem>
-                      <SelectItem value="technical">فنی</SelectItem>
-                      <SelectItem value="operations">عملیات</SelectItem>
-                      <SelectItem value="marketing">بازاریابی</SelectItem>
+                      {positions.map(pos => (
+                        <SelectItem key={pos.id} value={pos.title}>{pos.title}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
               )} />
+
+              <FormField
+                control={form.control}
+                name="department"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>بخش *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="انتخاب بخش" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {departments.map(dep => (
+                          <SelectItem key={dep.id} value={dep.name}>{dep.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+
+              {/* *** تغییر کلیدی ۴: اتصال فیلد "شعبه" به داده‌های داینامیک *** */}
               <FormField control={form.control} name="branch" render={({ field }) => (
                 <FormItem><FormLabel className="flex items-center gap-2"><Building className="w-4 h-4" />شعبه کاری *</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
                     <FormControl><SelectTrigger><SelectValue placeholder="انتخاب شعبه" /></SelectTrigger></FormControl>
                     <SelectContent className="bg-card">
-                      <SelectItem value="central">دفتر مرکزی</SelectItem>
-                      <SelectItem value="tehran">شعبه تهران</SelectItem>
-                      <SelectItem value="isfahan">شعبه اصفهان</SelectItem>
+                      {branches.map(branch => (
+                        <SelectItem key={branch.id} value={branch.name}>{branch.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
               )} />
-              <FormField control={form.control} name="dateOfJoining" render={({ field }) => (
-                <FormItem><FormLabel className="flex items-center gap-2"><CalendarDays className="w-4 h-4" />تاریخ استخدام *</FormLabel>
-                  <FormControl><PersianDatePicker value={field.value} onChange={field.onChange} placeholder="انتخاب تاریخ" disabled={isLoading} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="status" render={({ field }) => (
-                <FormItem><FormLabel>وضعیت *</FormLabel>
-                  <FormControl>
-                    <RadioGroup onValueChange={field.onChange} value={field.value} className="flex items-center pt-2 gap-6" disabled={isLoading}>
-                      <div className="flex items-center space-x-2 space-x-reverse"><RadioGroupItem value="active" id="active" /><Label htmlFor="active">فعال</Label></div>
-                      <div className="flex items-center space-x-2 space-x-reverse"><RadioGroupItem value="inactive" id="inactive" /><Label htmlFor="inactive">غیرفعال</Label></div>
-                    </RadioGroup>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
+               <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>وضعیت *</FormLabel>
+                      <FormControl>
+                        <ToggleGroup
+                          type="single"
+                          variant="outline"
+                          className="grid w-full grid-cols-2"
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                          disabled={isLoading}
+                        >
+                          <ToggleGroupItem value="active" aria-label="انتخاب فعال" className="w-full data-[state=on]:bg-green-100 data-[state=on]:text-green-700">
+                            فعال
+                          </ToggleGroupItem>
+                          <ToggleGroupItem value="inactive" aria-label="انتخاب غیرفعال" className="w-full data-[state=on]:bg-red-100 data-[state=on]:text-red-700">
+                            غیرفعال
+                          </ToggleGroupItem>
+                        </ToggleGroup>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
             </CardContent>
+         
           </Card>
           
           <Card className="glass-card border-amber-500/20">
@@ -375,33 +480,6 @@ export default function AddEmployee() {
               )} />
             </CardContent>
           </Card>
-
-          <Card className="glass-card border-indigo-500/20">
-            <CardHeader><CardTitle className="flex items-center justify-between"><div className="flex items-center gap-2 text-indigo-600"><CheckCircle className="w-6 h-6" />وظایف و مسئولیت‌ها</div><Button type="button" variant="outline" size="sm" onClick={addNewTask} disabled={isLoading}><Plus className="w-4 h-4 ml-2" />افزودن وظیفه</Button></CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              {taskFields.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground"><CheckCircle className="w-12 h-12 mx-auto mb-4 opacity-50" /><p>هنوز وظیفه‌ای تعریف نشده است</p><Button type="button" variant="outline" size="sm" onClick={addNewTask} disabled={isLoading} className="mt-2"><Plus className="w-4 h-4 ml-2" />اولین وظیفه را اضافه کنید</Button></div>
-              ) : (
-                <div className="space-y-4">
-                  {taskFields.map((task, index) => (
-                    <Card key={task.id} className="border border-indigo-500/30 bg-indigo-500/5">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between mb-4"><h4 className="text-sm font-medium text-indigo-800">وظیفه {index + 1}</h4><Button type="button" variant="ghost" size="sm" onClick={() => removeTask(index)} disabled={isLoading}><Trash2 className="w-4 h-4 text-red-500" /></Button></div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <FormField control={form.control} name={`tasks.${index}.title`} render={({ field }) => (<FormItem><FormLabel>عنوان وظیفه</FormLabel><FormControl><Input placeholder="عنوان وظیفه" {...field} disabled={isLoading} /></FormControl><FormMessage /></FormItem>)} />
-                          <FormField control={form.control} name={`tasks.${index}.status`} render={({ field }) => (<FormItem><FormLabel>وضعیت</FormLabel><Select onValueChange={field.onChange} value={field.value} disabled={isLoading}><FormControl><SelectTrigger><SelectValue placeholder="انتخاب وضعیت" /></SelectTrigger></FormControl><SelectContent className="bg-card"><SelectItem value="pending"><div className="flex items-center gap-2"><AlertCircle className="w-4 h-4 text-red-500" />در انتظار</div></SelectItem><SelectItem value="in_progress"><div className="flex items-center gap-2"><Clock className="w-4 h-4 text-yellow-500" />در حال انجام</div></SelectItem><SelectItem value="completed"><div className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-green-500" />تکمیل شده</div></SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-                          <FormField control={form.control} name={`tasks.${index}.description`} render={({ field }) => (<FormItem className="md:col-span-2"><FormLabel>توضیحات وظیفه</FormLabel><FormControl><Textarea placeholder="توضیحات کامل وظیفه..." {...field} disabled={isLoading} rows={3} /></FormControl><FormMessage /></FormItem>)} />
-                          <FormField control={form.control} name={`tasks.${index}.assignedDate`} render={({ field }) => (<FormItem><FormLabel>تاریخ تخصیص</FormLabel><FormControl><PersianDatePicker value={field.value} onChange={field.onChange} placeholder="انتخاب تاریخ تخصیص" disabled={isLoading} /></FormControl><FormMessage /></FormItem>)} />
-                          <FormField control={form.control} name={`tasks.${index}.dueDate`} render={({ field }) => (<FormItem><FormLabel>مهلت انجام (اختیاری)</FormLabel><FormControl><PersianDatePicker value={field.value} onChange={field.onChange} placeholder="انتخاب مهلت انجام" disabled={isLoading} /></FormControl><FormMessage /></FormItem>)} />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
           <Card className="glass-card border-gray-500/20">
             <CardHeader><CardTitle className="flex items-center gap-2 text-gray-600"><FileText className="w-5 h-5" />مدارک و فایل‌ها</CardTitle></CardHeader>
             <CardContent className="space-y-6">
