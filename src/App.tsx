@@ -1,91 +1,71 @@
-// src/App.tsx
+import { FC, ReactNode } from 'react';
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { useAuth } from './lib/auth';
+import LoginPage from './pages/Login';
+import DashboardLayout from './components/layouts/DashboardLayout';
+import Dashboard from './pages/Dashboard';
+import Employees from './pages/Employees';
+import EmployeeProfile from './pages/EmployeeProfile';
+import Settings from './pages/Settings';
+import Requests from './pages/Requests';
+import Tasks from './pages/Tasks';
+import AddEmployee from './pages/AddEmployee';
+import EditEmployee from './pages/EditEmployee';
+import FullPageLoader from './components/shared/FullPageLoader';
 
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from '@/components/ui/sonner';
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ThemeProvider } from "next-themes";
-import { DashboardLayout } from "@/components/ui/layout/DashboardLayout";
-import { useAuth } from "@/lib/auth"; // ★ Import the custom hook
+interface ProtectedRouteProps {
+  children?: ReactNode;
+}
 
-// --- Import all your page components ---
-import Index from "./pages/Index";
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Employees from "./pages/Employees";
-import AddEmployee from "./pages/AddEmployee";
-import EditEmployee from "./pages/EditEmployee";
-import Tasks from "./pages/Tasks";
-import Requests from "./pages/Requests";
-import Sales from "./pages/Sales";
-import Salary from "./pages/Salary";
-import NotFound from "./pages/NotFound";
-import Settings from "./pages/Settings";
-import Branches from "./pages/Branches";
-
-const queryClient = new QueryClient();
-
-// ★ A simple component to protect routes that require authentication
-const ProtectedRoute = () => {
+const ProtectedRoute: FC<ProtectedRouteProps> = ({ children }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
-    // While checking for user status, show a loading indicator
-    return <div className="flex h-screen w-full items-center justify-center">Loading...</div>;
+    return <FullPageLoader />;
   }
 
-  // If there is a user, render the DashboardLayout which contains all the nested pages.
-  // Otherwise, redirect them to the login page.
-  return user ? <DashboardLayout /> : <Navigate to="/login" replace />;
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children ? <>{children}</> : <Outlet />;
 };
 
-const App = () => {
+const PublicRoute: FC = () => {
   const { user, loading } = useAuth();
-  
-  // A wrapper to prevent a flicker while the auth status is being determined.
+
   if (loading) {
-    return <div className="flex h-screen w-full items-center justify-center">Initializing Application...</div>;
+    return <FullPageLoader />;
   }
 
+  return user ? <Navigate to="/dashboard" replace /> : <LoginPage />;
+};
+
+const App: FC = () => {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <Router>
-            <Routes>
-              {/* --- Public Routes --- */}
-              {/* The login page should only be accessible to logged-out users. */}
-              {/* If a logged-in user tries to access it, redirect them to the dashboard. */}
-              <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" replace />} />
-              
-              {/* The index page might be public or you might want to redirect */}
-              <Route path="/" element={<Index />} />
-
-              {/* --- Protected Routes --- */}
-              {/* All routes nested inside this element will require authentication. */}
-              <Route path="/" element={<ProtectedRoute />}>
-                <Route path="dashboard" element={<Dashboard />} />
-                <Route path="employees" element={<Employees />} />
-                <Route path="employees/add" element={<AddEmployee />} />
-                <Route path="employees/edit/:id" element={<EditEmployee />} />
-                <Route path="tasks" element={<Tasks />} />
-                <Route path="requests" element={<Requests />} />
-                <Route path="sales" element={<Sales />} />
-                <Route path="salary" element={<Salary />} />
-                <Route path="settings" element={<Settings />} />
-                <Route path="branches" element={<Branches />} />
-              </Route>
-
-              {/* --- Not Found Route --- */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Router>
-        </TooltipProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <Routes>
+      <Route path="/login" element={<PublicRoute />} />
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <Routes>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/employees" element={<Employees />} />
+                <Route path="/employees/add" element={<AddEmployee />} />
+                <Route path="/employees/:id" element={<EmployeeProfile />} />
+                <Route path="/employees/:id/edit" element={<EditEmployee />} />
+                <Route path="/tasks" element={<Tasks />} />
+                <Route path="/requests" element={<Requests />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 };
 
