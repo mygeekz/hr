@@ -70,14 +70,12 @@ app.post("/api/auth/login", (req, res) => {
         }
 
         // ساخت توکن امن JWT در صورت موفقیت
-        const JWT_SECRET_KEY = 'your_super_secret_key'; // این کلید را بعدا در فایل .env قرار دهید
-        const payload = { id: user.id, username: user.username, role: user.role };
+        const payload = { id: user.id, username: user.username, fullName: user.fullName, role: user.role };
         const token = jwt.sign(payload, JWT_SECRET_KEY, { expiresIn: '8h' });
 
         const { password: userPassword, ...userData } = user; // حذف رمز از پاسخ
 
         res.json({
-            message: "ورود موفقیت آمیز بود",
             token: token,
             user: userData
         });
@@ -86,30 +84,21 @@ app.post("/api/auth/login", (req, res) => {
 /* --------------------------------- Dashboard API --------------------------------- */
 app.get("/api/dashboard/stats", (req, res) => {
   const queries = [
-    db.get.bind(db, "SELECT COUNT(*) as count FROM employees"),
-    db.get.bind(db, "SELECT COUNT(*) as count FROM tasks WHERE status = 'تکمیل شده'"),
-    db.get.bind(db, "SELECT COUNT(*) as count FROM tasks WHERE status != 'تکمیل شده'"),
-    db.all.bind(db, "SELECT * FROM notifications ORDER BY createdAt DESC LIMIT 5")
+    new Promise((resolve, reject) => db.get("SELECT COUNT(*) as totalEmployees FROM employees", (err, row) => err ? reject(err) : resolve(row))),
+    new Promise((resolve, reject) => db.get("SELECT COUNT(*) as totalTasks FROM tasks", (err, row) => err ? reject(err) : resolve(row))),
+    new Promise((resolve, reject) => db.get("SELECT COUNT(*) as pendingTasks FROM tasks WHERE status != 'تکمیل شده'", (err, row) => err ? reject(err) : resolve(row))),
+    new Promise((resolve, reject) => db.all("SELECT * FROM notifications ORDER BY createdAt DESC LIMIT 5", (err, rows) => err ? reject(err) : resolve({ recentActivities: rows })))
   ];
 
-  Promise.all(queries.map(fn => new Promise((resolve, reject) => {
-    fn((err, result) => {
-      if (err) reject(err);
-      else resolve(result);
+  Promise.all(queries)
+    .then(results => {
+      const stats = results.reduce((acc, current) => ({ ...acc, ...current }), {});
+      res.json(stats);
+    })
+    .catch(err => {
+      console.error("Error fetching dashboard stats:", err);
+      res.status(500).json({ error: "Failed to fetch dashboard statistics" });
     });
-  })))
-  .then(([employees, completedTasks, pendingTasks, recentActivities]) => {
-    res.json({
-      totalEmployees: employees.count,
-      totalCompletedTasks: completedTasks.count,
-      totalPendingTasks: pendingTasks.count,
-      recentActivities: recentActivities
-    });
-  })
-  .catch(err => {
-    console.error("Error fetching dashboard stats:", err);
-    res.status(500).json({ error: "Failed to fetch dashboard statistics" });
-  });
 });
 
 
@@ -174,14 +163,6 @@ app.put("/api/users/:id", (req, res) => {
             return res.status(404).json({ error: "کاربری با این شناسه یافت نشد." });
         }
         res.json({ message: "اطلاعات کاربر با موفقیت بروزرسانی شد", changes: this.changes });
-    });
-});
-
-app.patch("/api/users/:id/status", (req, res) => {
-    const { isActive } = req.body;
-    db.run(`UPDATE users SET isActive = ? WHERE id = ?`, [isActive, req.params.id], function(err) {
-        if (err) return res.status(400).json({ "error": err.message });
-        res.json({ message: "وضعیت کاربر با موفقیت بروزرسانی شد", changes: this.changes });
     });
 });
 
